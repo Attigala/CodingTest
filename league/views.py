@@ -7,7 +7,8 @@ from django.core import serializers
 from itertools import chain
 from django.db.models import Sum,Avg,Count
 import json
-# Create your views here.
+
+# If the user is successfully validated show them a list of matches
 def home(request):
     if(request.user.is_authenticated):
         matches =Match.objects.all()
@@ -16,6 +17,7 @@ def home(request):
     else: 
         return HttpResponse(status=403)
 
+# If the logged in user is a coach who is assigned to a team, show him his player's satistics
 def team(request):
     if(request.user.is_authenticated):
         user=request.user
@@ -38,15 +40,16 @@ def team(request):
     else:
         return HttpResponse(status=403)
 
+#Show a league admin all the player's statistics
 def all_teams(request):
     if(request.user.is_authenticated):
         if(request.user.groups.filter(name="LeagueAdmin").exists()):
             try:
-                players = Player.objects.raw(''' SELECT sum(score.score) totscore, player.id, player.team_id
-                from league_player player
-                inner join league_score score on
+                players = Player.objects.raw(''' SELECT sum(score.score) AS totscore, player.id, player.team_id
+                FROM league_player player
+                INNER JOIN league_score score ON
                 score.player_id = player.id
-                group by player.id, player.team_id''')
+                GROUP BY player.id, player.team_id''')
                 tempList = list()
                 for player in players:
                     teamStat={
@@ -62,27 +65,28 @@ def all_teams(request):
             return HttpResponse(status=403)
     else:
         return HttpResponse(status=403)
+
+#Show the coach his best performing players
 def ninetieth_percentile(request):
     if(request.user.is_authenticated):
         if(request.user.groups.filter(name="Coach").exists()):
             teams=Team.objects.filter(coach=request.user)
-            scores = Score.objects.raw(''' SELECT count(*) as count, score.id 
-            FROM league_score score
-            inner join league_player player ON
-            player.id = score.player_id
-            where player.team_id = %s
-            group by score.id''', [teams.first().id])
-            scoreCount = 0
-            for score in scores:
-                scoreCount = score.count
-            #print(scoreCount)
-            ninetiethPercentile = round(int(scoreCount) * 0.9)
-
-            playerStats = Player.objects.raw(''' SELECT score.id, player.id as player_id, avg(score.score) averagescore
+            scores = Score.objects.raw(''' SELECT count(*) AS count, score.id 
             FROM league_score score
             INNER JOIN league_player player ON
             player.id = score.player_id
-            where player.team_id = %s 
+            WHERE player.team_id = %s
+            GROUP by score.id''', [teams.first().id])
+            scoreCount = 0
+            for score in scores:
+                scoreCount = score.count
+            ninetiethPercentile = round(int(scoreCount) * 0.9)
+
+            playerStats = Player.objects.raw(''' SELECT score.id, player.id AS player_id, AVG(score.score) AS averagescore
+            FROM league_score score
+            INNER JOIN league_player player ON
+            player.id = score.player_id
+            WHERE player.team_id = %s 
             GROUP BY player.id, score.id
             ORDER BY score.score''', [teams.first().id])
             tempList = list()
